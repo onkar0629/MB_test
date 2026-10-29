@@ -1,0 +1,88 @@
+resources:
+  jobs:
+    github_ingest:
+      name: github_ingest
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?"
+        timezone_id: America/Los_Angeles
+        pause_status: ${var.schedule_pause_status}
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      notification_settings:
+        no_alert_for_skipped_runs: false
+        no_alert_for_canceled_runs: false
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              - requests>=2.31
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: land
+          environment_key: default
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          spark_python_task:
+            python_file: ../src/ingestion/github/land_task.py
+            parameters:
+              - "--secret-scope"
+              - "mb-ingest"
+              - "--secret-key"
+              - "github-api-token"
+              - "--volume-root"
+              - "${var.github_volume_root}"
+              - "--state-table"
+              - "${var.catalog}.${var.github_bronze_schema}.${var.table_prefix}ingest_state"
+              - "--repos"
+              - "${var.github_repos}"
+              - "--default-start"
+              - "${var.default_start}"
+              - "--run-id"
+              - "{{job.run_id}}"
+
+        - task_key: bronze_load
+          depends_on:
+            - task_key: land
+          run_if: ALL_SUCCESS
+          environment_key: default
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          spark_python_task:
+            python_file: ../src/transform/github/bronze_task.py
+            parameters:
+              - "--volume-root"
+              - "${var.github_volume_root}"
+              - "--checkpoint-path"
+              - "${var.github_volume_root}/_checkpoints/bronze"
+              - "--target-table"
+              - "${var.catalog}.${var.github_bronze_schema}.${var.table_prefix}github_events_raw"
+              - "--run-id"
+              - "{{job.run_id}}"
+
+        - task_key: silver_load
+          depends_on:
+            - task_key: bronze_load
+          environment_key: default
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          spark_python_task:
+            python_file: ../src/transform/github/silver_task.py
+            parameters:
+              - "--bronze-table"
+              - "${var.catalog}.${var.github_bronze_schema}.${var.table_prefix}github_events_raw"
+              - "--pulls-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_pull_requests"
+              - "--commits-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_commits"
+              - "--issues-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_issues"

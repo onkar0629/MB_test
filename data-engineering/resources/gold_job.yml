@@ -1,0 +1,55 @@
+resources:
+  jobs:
+    gold_analytics:
+      name: gold_analytics
+      schedule:
+        quartz_cron_expression: "0 30 7 * * ?"
+        timezone_id: America/Los_Angeles
+        pause_status: ${var.schedule_pause_status}
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      notification_settings:
+        no_alert_for_skipped_runs: false
+        no_alert_for_canceled_runs: false
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              - requests>=2.31
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: build_gold_activity
+          environment_key: default
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          spark_python_task:
+            python_file: ../src/transform/gold/gold_task.py
+            parameters:
+              - "--people-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}twenty_people"
+              - "--members-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}twenty_workspace_members"
+              - "--slack-users-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}slack_users"
+              - "--github-prs-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_pull_requests"
+              - "--github-commits-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_commits"
+              - "--clickup-tasks-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}clickup_tasks"
+              - "--fathom-meetings-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}fathom_meetings"
+              - "--team-mapping-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}team_mapping"
+              - "--dim-person-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}dim_person"
+              - "--gold-activity-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}gold_person_activity_weekly"
