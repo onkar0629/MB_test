@@ -1,0 +1,139 @@
+bundle:
+  name: mb-data-engineering
+
+include:
+  - resources/*.yml
+  - "*.local.yml"
+
+# Job tasks run their entry-point file directly, so `src` is not importable
+# unless the package is installed. Build it as a wheel and install it into the
+# job environment (see resources/fathom_job.yml).
+artifacts:
+  default:
+    type: whl
+    build: uv build --wheel
+    path: .
+
+variables:
+  catalog:
+    description: Unity Catalog catalog that ingestion writes into.
+    default: workspace
+  warehouse_id:
+    description: SQL warehouse used by ingestion jobs.
+    default: bc5e6ab173f2002c
+  bronze_schema:
+    description: Schema holding raw, append-only Fathom data.
+    default: raw_fathom
+  clickup_bronze_schema:
+    description: Schema holding raw, append-only ClickUp data.
+    default: raw_clickup
+  github_bronze_schema:
+    description: Schema holding raw, append-only GitHub data.
+    default: raw_github
+  slack_bronze_schema:
+    description: Schema holding raw, append-only Slack data.
+    default: raw_slack
+  postgres_bronze_schema:
+    description: Schema holding raw, append-only PostgreSQL data.
+    default: raw_postgres
+  silver_schema:
+    description: Schema holding parsed, deduplicated Silver tables.
+    default: silver
+  gold_schema:
+    description: Schema holding aggregated Gold analytics tables.
+    default: gold
+  table_prefix:
+    description: Prefix isolating one developer's tables in the dev target.
+    default: ""
+  volume_root:
+    description: Landing volume root for raw API responses.
+    default: /Volumes/workspace/raw_fathom/landing
+  clickup_volume_root:
+    description: Landing volume root for raw ClickUp API responses.
+    default: /Volumes/workspace/raw_clickup/landing
+  github_volume_root:
+    description: Landing volume root for raw GitHub API responses.
+    default: /Volumes/workspace/raw_github/landing
+  slack_volume_root:
+    description: Landing volume root for raw Slack API responses.
+    default: /Volumes/workspace/raw_slack/landing
+  postgres_volume_root:
+    description: Landing volume root for raw PostgreSQL API responses.
+    default: /Volumes/workspace/raw_postgres/landing
+  postgres_host:
+    description: PostgreSQL host for Twenty CRM.
+    default: action-os-twenty-db.production.internal
+  postgres_port:
+    description: PostgreSQL port for Twenty CRM.
+    default: "5432"
+  postgres_user:
+    description: PostgreSQL user for Twenty CRM.
+    default: postgres
+  postgres_database:
+    description: PostgreSQL database name for Twenty CRM.
+    default: "default"
+  postgres_workspace_schema:
+    description: Specific Twenty CRM workspace schema in PostgreSQL (leave empty for auto-discovery).
+    default: ""
+  github_repos:
+    description: JSON array of GitHub repositories to ingest.
+    default: '["coders-boutique/action-os-twenty"]'
+  fathom_accounts:
+    description: JSON array of {slug, secret_key} per contributor.
+    # Note: Hardcoded for now. Follow-up task: sync accounts dynamically from Twenty CRM.
+    default: '[{"slug":"fenil","secret_key":"fathom-api-key-fenil"},{"slug":"usman","secret_key":"fathom-api-key-usman"}]'
+  schedule_pause_status:
+    description: PAUSED in dev so two developers do not both run the schedule.
+    default: PAUSED
+  default_start:
+    description: created_after for the very first run, before any watermark exists.
+    default: "2026-01-01T00:00:00+00:00"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-44ca0102-48c3.cloud.databricks.com
+    variables:
+      bronze_schema: dev
+      clickup_bronze_schema: dev
+      github_bronze_schema: dev
+      slack_bronze_schema: dev
+      postgres_bronze_schema: dev
+      silver_schema: dev
+      gold_schema: dev
+      table_prefix: ${workspace.current_user.short_name}_
+      volume_root: /Volumes/workspace/raw_fathom/landing/dev/${workspace.current_user.short_name}
+      clickup_volume_root: /Volumes/workspace/raw_clickup/landing/dev/${workspace.current_user.short_name}
+      github_volume_root: /Volumes/workspace/raw_github/landing/dev/${workspace.current_user.short_name}
+      slack_volume_root: /Volumes/workspace/raw_slack/landing/dev/${workspace.current_user.short_name}
+      postgres_volume_root: /Volumes/workspace/raw_postgres/landing/dev/${workspace.current_user.short_name}
+      postgres_host: localhost
+      postgres_workspace_schema: ""
+      schedule_pause_status: PAUSED
+      default_start: "2026-09-11T00:00:00+00:00"
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-44ca0102-48c3.cloud.databricks.com
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      bronze_schema: raw_fathom
+      clickup_bronze_schema: raw_clickup
+      github_bronze_schema: raw_github
+      slack_bronze_schema: raw_slack
+      postgres_bronze_schema: raw_postgres
+      silver_schema: silver
+      gold_schema: gold
+      table_prefix: ""
+      volume_root: /Volumes/workspace/raw_fathom/landing
+      clickup_volume_root: /Volumes/workspace/raw_clickup/landing
+      github_volume_root: /Volumes/workspace/raw_github/landing
+      slack_volume_root: /Volumes/workspace/raw_slack/landing
+      postgres_volume_root: /Volumes/workspace/raw_postgres/landing
+      postgres_host: ${var.postgres_host}
+      postgres_workspace_schema: ""
+      schedule_pause_status: UNPAUSED
+      default_start: "2026-01-01T00:00:00+00:00"

@@ -1,0 +1,87 @@
+resources:
+  jobs:
+    gold_analytics:
+      name: gold_analytics
+      schedule:
+        quartz_cron_expression: "0 30 7 * * ?"
+        timezone_id: America/Los_Angeles
+        pause_status: ${var.schedule_pause_status}
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      notification_settings:
+        no_alert_for_skipped_runs: false
+        no_alert_for_canceled_runs: false
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              - requests>=2.31
+              - pg8000>=1.30.0
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: build_gold_activity
+          environment_key: default
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          spark_python_task:
+            python_file: ../src/transform/gold/gold_task.py
+            parameters:
+              - "--people-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}twenty_people"
+              - "--members-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}twenty_workspace_members"
+              - "--slack-users-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}slack_users"
+              - "--github-prs-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_pull_requests"
+              - "--github-commits-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}github_commits"
+              - "--clickup-tasks-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}clickup_tasks"
+              - "--fathom-meetings-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}fathom_meetings"
+              - "--team-mapping-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}team_mapping"
+              - "--dim-person-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}dim_person"
+              - "--gold-activity-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}gold_person_activity_weekly"
+
+        - task_key: write_back_to_postgres
+          environment_key: default
+          depends_on:
+            - task_key: build_gold_activity
+          run_if: ALL_SUCCESS
+          spark_python_task:
+            python_file: ../src/transform/gold/sync_postgres_task.py
+            parameters:
+              - "--dim-person-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}dim_person"
+              - "--gold-activity-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}gold_person_activity_weekly"
+              - "--clickup-gold-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}clickup_team_productivity"
+              - "--fathom-gold-table"
+              - "${var.catalog}.${var.gold_schema}.${var.table_prefix}fathom_team_productivity"
+              - "--fathom-meetings-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}fathom_meetings"
+              - "--fathom-action-items-table"
+              - "${var.catalog}.${var.silver_schema}.${var.table_prefix}fathom_action_items"
+              - "--host"
+              - "${var.postgres_host}"
+              - "--port"
+              - "${var.postgres_port}"
+              - "--user"
+              - "${var.postgres_user}"
+              - "--database"
+              - "${var.postgres_database}"
+              - "--workspace-schema"
+              - "${var.postgres_workspace_schema}"

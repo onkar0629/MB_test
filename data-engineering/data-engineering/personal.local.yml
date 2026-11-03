@@ -1,0 +1,9 @@
+targets:
+  dev:
+    workspace:
+      profile: personal
+      host: https://dbc-3a6d0407-4c5a.cloud.databricks.com
+    variables:
+      table_prefix: "dev_"
+      postgres_host: localhost
+      schedule_pause_status: PAUSED
